@@ -3,22 +3,22 @@ package org.android.starter.network
 import android.content.Context
 import android.util.Log
 import com.google.net.cronet.okhttptransport.CronetCallFactory
-import com.google.net.cronet.okhttptransport.CronetInterceptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import org.android.starter.BuildConfig
 import org.chromium.net.CronetEngine
-import org.chromium.net.ProxyOptions
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.io.File
-import java.net.Proxy
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.URLConnection
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.math.max
 
 
 object NetworkV1 {
@@ -27,7 +27,7 @@ object NetworkV1 {
     private lateinit var mCronetEngine: CronetEngine
     private lateinit var mOkhttp: OkHttpClient
     private lateinit var mRetrofit: Retrofit
-
+    private lateinit var mExecutors: ExecutorService
     private val mAPI: IApiV1 by lazy { this.mRetrofit.create(IApiV1::class.java) }
 
     val httpRttMS: Int
@@ -65,6 +65,10 @@ object NetworkV1 {
     fun init(context: Context) {
         val cacheDir = File(context.cacheDir, "cronet")
         cacheDir.mkdirs()
+
+        val parallel = max(Runtime.getRuntime().availableProcessors() / 2, 4)
+        this.mExecutors = Executors.newWorkStealingPool(parallel)
+
         this.mCronetEngine = CronetEngine.Builder(context)
             .enableBrotli(true)
             .enableQuic(true)
@@ -78,6 +82,7 @@ object NetworkV1 {
 
         val factory = CronetCallFactory.newBuilder(this.mCronetEngine)
             .setCallTimeoutMillis(15 * 1000)
+            .setCallbackExecutorService(this.mExecutors)
             .build()
 
         this.mOkhttp = OkHttpClient.Builder()
